@@ -10,7 +10,15 @@
   </head>
   <body>
     <main id="gggame" data-endpoint="__GGGAME_ENDPOINT__">
-      <header class="topbar"><a href="/">← Yuanyi's playground</a><div class="top-actions"><button id="sound-toggle" aria-pressed="true">音效：开</button><span id="connection">尚未连接</span></div></header>
+      <header class="topbar"><a href="/">← Yuanyi's playground</a><div class="top-actions"><button id="leaderboard-open">排行榜</button><button id="sound-toggle" aria-pressed="true">音效：开</button><span id="connection">尚未连接</span></div></header>
+      <dialog id="leaderboard" aria-labelledby="leaderboard-title">
+        <div class="section-title"><div><p class="eyebrow">NEIGHBORHOOD RECORDS</p><h2 id="leaderboard-title">街坊排行榜</h2></div><button id="leaderboard-close" aria-label="关闭排行榜">关闭</button></div>
+        <p class="fine">按胜场排序，胜场相同则游玩次数少者在前 · 展示前 50 名</p>
+        <form id="leaderboard-search"><label>查询用户名<input id="leaderboard-name" maxlength="24" placeholder="输入完整用户名" /></label><button type="submit">查询 / 刷新</button></form>
+        <p id="leaderboard-status" role="status" aria-live="polite"></p><p id="leaderboard-personal" hidden></p>
+        <p class="scroll-hint">左右滑动表格，查看全部战绩 →</p><div class="leaderboard-scroll"><table><thead><tr><th scope="col">排名</th><th scope="col">用户名</th><th scope="col">游玩</th><th scope="col">胜场</th><th scope="col">胜率</th><th scope="col">击杀</th><th scope="col">穿裤子</th></tr></thead><tbody id="leaderboard-rows"></tbody></table></div>
+        <p class="fine">从本功能上线后开始统计，每局结束后更新。胜率 = 获胜局数 ÷ 游玩次数。人机对局计入，电脑不上榜；中途退出也计游玩次数，房主关闭未结束的对局不产生胜者。同名会合并统计，目前没有账号认证。击杀只计成功割出局，穿裤子只计成功动作，开局自带的不计入。</p>
+      </dialog>
       <section class="hero"><div><p class="eyebrow">猜拳 · 串门 · 活到最后</p><h1>GG<span>game</span><i>3D ONLINE</i></h1><p>小院不大，街坊的心眼可不少。</p></div><div class="hero-art" aria-hidden="true"><span>石</span><span>剪</span><span>布</span></div></section>
       <p id="notice" role="status" aria-live="polite"></p>
       <section id="entrance" class="panel entrance">
@@ -22,7 +30,7 @@
         </form>
       </section>
       <section id="room" hidden>
-        <div class="room-strip"><div><span class="eyebrow">ROOM</span> <strong id="room-label"></strong></div><div class="buttons"><button id="invite">复制邀请链接</button><button id="leave" class="danger" title="对局中退出会立即出局">退出房间</button></div></div>
+        <div class="room-strip"><div><span class="eyebrow">ROOM</span> <strong id="room-label"></strong></div><div class="buttons"><button id="invite">复制邀请链接</button><button id="leave" class="danger" title="房主退出会关闭房间；其他成员在对局中退出会出局">退出房间</button></div></div>
         <section id="world-shell" class="world-shell" aria-label="3D 小院">
           <div class="world-heading"><div><span class="eyebrow">THE NEIGHBORHOOD</span><h2>今日小院，热闹开场。</h2></div><button id="world-toggle" aria-pressed="true">切换文字视图</button></div>
           <div id="world-stage" class="world-stage">
@@ -56,7 +64,7 @@
           </div><aside class="panel journal"><p class="eyebrow">LIVE JOURNAL</p><h2>发生了什么</h2><ol id="logs" aria-live="polite" aria-relevant="additions"></ol></aside></div>
         </div>
       </section>
-      <details class="rules"><summary>第一次玩？看看规则 ↗</summary><div><p>所有人从自己家开始，穿 1 条裤子，最多穿 3 条。裤子是护甲，没有裤子也不会自动出局。</p><p>一起石头剪刀布；平局全员重来。可以有多个赢家，每位赢家获得「输家人数」的步数。连续输 7 次会获得 3 步保底并重新累计；平局不计入也不中断连败，获胜清零。结果展示 5 秒后开始行动。所有人的步数和行动用完后进入下一轮，步数不能保留。</p><p>拿刀 1 秒、穿裤子 1 秒、移动 2 秒、脱裤子 3 秒、割 3 秒，各花 1 步。刀永久持有；同地点才能脱或割。割需要持刀且对手没有裤子。</p><p>各人同时行动，自身动作依次执行。移动一开始就进入独立的户外，2 秒后到达。其他动作执行期间仍可能被偷袭。</p><p>动作结束时结算；同刻优先级：拿刀 → 移动 → 穿 → 脱 → 割。割结算时对方穿上了裤子，则无效且照常消耗步数。最后存活的人获胜。</p><p>房主只能在大厅踢人。主动退出会立即离开房间，对局中视为出局。意外断线 75 秒内可以重连；超时退出本局。服务器按收到操作的时间处理，同类同刻动作按提交顺序结算。试玩服务每房间最多 64 人。</p></div></details>
+      <details class="rules"><summary>第一次玩？看看规则 ↗</summary><div><p>所有人从自己家开始，穿 1 条裤子，最多穿 3 条。每次穿、脱只增减 1 条；没有裤子也不会自动出局。</p><p>一起石头剪刀布；平局全员重来。可以有多个赢家，每位赢家获得「输家人数」的步数。连续输 7 次会获得 3 步保底并重新累计；平局不计入也不中断连败，获胜清零。分出胜负后展示 5 秒再开始行动；平局只展示 1 秒就重新出拳。所有人的步数和行动用完后进入下一轮，步数不能保留。</p><p>拿刀 1 秒、穿裤子 1 秒、移动 2 秒、脱裤子 3 秒、割 3 秒，各花 1 步。刀永久持有；同地点才能脱或割。割需要持刀且对手没有裤子。</p><p>各人同时行动，自身动作依次执行。移动一开始就进入独立的户外，2 秒后到达。其他动作执行期间仍可能被偷袭。</p><p>动作结束时结算；同刻优先级：拿刀 → 移动 → 穿 → 脱 → 割。割结算时对方穿上了裤子，则无效且照常消耗步数。最后存活的人获胜。</p><p>房主只能在大厅踢人。房主主动退出会关闭房间。房主关闭页面或连接断开后有 15 秒重连时间，超时关闭房间；网络无响应时最迟在最后心跳后 45 秒关闭。其他成员退出视为出局，意外断线有 75 秒重连时间。服务器按收到操作的时间处理，同类同刻动作按提交顺序结算。试玩服务每房间最多 64 人。</p></div></details>
       <footer>GGgame · 低配规则，多人快乐。<span>3D 小院试玩版</span></footer>
       <noscript>请开启 JavaScript 以连接游戏房间。</noscript>
     </main>

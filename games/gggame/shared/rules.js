@@ -1,6 +1,7 @@
 export const HANDS = ['rock', 'scissors', 'paper'];
 export const HAND_NAMES = { rock: '石头', scissors: '剪刀', paper: '布' };
 export const REVEAL_SECONDS = 5;
+export const TIE_REVEAL_SECONDS = 1;
 const BEATS = { rock: 'scissors', scissors: 'paper', paper: 'rock' };
 export const ACTION_SECONDS = { knife: 1, move: 2, wear: 1, strip: 3, execute: 3 };
 export const ACTION_NAMES = { knife: '拿刀', move: '移动', wear: '穿裤子', strip: '脱裤子', execute: '割' };
@@ -37,7 +38,7 @@ export class GGGame {
     this.state = {
       phase: 'rps', time: 0, round: 1, attempt: 1, revision: this.state.revision + 1,
       paused: false, result: null, logs: [], revealUntil: 0,
-      players: names.map((name, i) => ({ id: `p${i}`, name: name.trim().slice(0, 24), home: `p${i}`, location: `p${i}`, armor: 1, knife: false, alive: true, steps: 0, active: null, queue: [], hand: null, picked: false, won: false, lossStreak: 0, pityAward: false })),
+      players: names.map((name, i) => ({ id: `p${i}`, name: name.trim().slice(0, 24), home: `p${i}`, location: `p${i}`, armor: 1, kills: 0, wears: 0, knife: false, alive: true, steps: 0, active: null, queue: [], hand: null, picked: false, won: false, lossStreak: 0, pityAward: false })),
     };
     this.picks.clear();
     this.log('所有人回到自己家，穿上 1 条裤子。猜拳开始！');
@@ -75,7 +76,7 @@ export class GGGame {
         if (p.lossStreak >= 7) { p.steps = 3; p.pityAward = true; p.lossStreak = 0; }
       }
     }
-    this.state.phase = 'reveal'; this.state.tie = !winning; this.state.revealUntil = this.state.time + REVEAL_SECONDS;
+    this.state.phase = 'reveal'; this.state.tie = !winning; this.state.revealUntil = this.state.time + (winning ? REVEAL_SECONDS : TIE_REVEAL_SECONDS);
     this.log(winning ? `${alive.filter(p => p.won).map(p => p.name).join('、')}获胜，各得 ${losers} 步。` : '平局！所有人重新出拳。', winning ? 'reward' : 'info');
     for (const p of alive.filter(p => p.pityAward)) this.log(`${p.name}触发七连败保底，获得 3 步，连败重新累计。`, 'reward');
     this.emit('revealed');
@@ -157,12 +158,13 @@ export class GGGame {
     } else if (job.type === 'move') {
       p.location = job.target; this.log(`${p.name}到达${t.name}的家。`, 'move');
     } else if (job.type === 'wear') {
-      p.armor++; this.log(`${p.name}穿上一条裤子，护甲 ${p.armor}/3。`, 'armor');
+      p.armor++; p.wears = (p.wears || 0) + 1; this.log(`${p.name}穿上一条裤子，现有 ${p.armor}/3 条。`, 'armor');
     } else if (job.type === 'knife') {
       p.knife = true; this.log(`${p.name}拿到了刀。`, 'knife');
     } else if (job.type === 'strip') {
       t.armor--; this.log(`${p.name}脱掉了${t.name}的一条裤子，剩余 ${t.armor} 条。`, 'attack');
     } else if (job.type === 'execute') {
+      p.kills = (p.kills || 0) + 1;
       t.alive = false; t.steps = 0; t.active = null; t.queue = [];
       this.log(`${p.name}割了${t.name}，${t.name}出局！`, 'out');
     }

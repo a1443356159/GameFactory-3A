@@ -63,14 +63,11 @@ describe('leaving rooms and lobby-only moderation', () => {
     expect(r.command(a.memberId, { type: 'kick', seq: 4, target: b.memberId }, 0).ok).toBe(false);
     expect(r.game.state.players[1].alive).toBe(true);
   });
-  it('leaving a lobby transfers host immediately and the last human closes the room', () => {
-    const { r, members: [a, b, c] } = room();
-    expect(r.command(a.memberId, { type: 'leave', seq: 1 }, 0).ok).toBe(true);
-    expect(r.host).toBe(b.memberId); expect(r.authenticate(a.token)).toBeUndefined();
-    r.command(b.memberId, { type: 'leave', seq: 1 }, 0);
-    r.command(c.memberId, { type: 'addBot', seq: 1 }, 0);
-    r.command(c.memberId, { type: 'leave', seq: 2 }, 0);
-    expect(r.expired).toBe(true);
+  it('host exit closes the lobby immediately, including computer members', () => {
+    const { r, members: [a] } = room();
+    r.command(a.memberId, { type: 'addBot', seq: 1 }, 0);
+    expect(r.command(a.memberId, { type: 'leave', seq: 2 }, 0).ok).toBe(true);
+    expect(r.expired).toBe(true); expect(r.pendingResults).toEqual([]);
   });
   it('leaving during RPS unblocks the remaining choices; leaving during action cancels the queue', () => {
     const { r, members: [a, b, c] } = room();
@@ -81,8 +78,8 @@ describe('leaving rooms and lobby-only moderation', () => {
     expect(r.game.state.players[0].steps).toBe(1);
     r.advance(5000); r.game.state.players[0].steps = 2;
     r.game.invoke({ type: 'knife', actor: 'p0' }); r.game.invoke({ type: 'wear', actor: 'p0' });
-    r.command(a.memberId, { type: 'leave', seq: 2 }, 5000);
-    expect(r.game.state.phase).toBe('over'); expect(r.game.state.result).toBe('p1');
+    r.command(b.memberId, { type: 'leave', seq: 2 }, 5000);
+    expect(r.game.state.phase).toBe('over'); expect(r.game.state.result).toBe('p0');
     expect(r.game.state.players[0].active).toBeNull(); expect(r.game.state.players[0].queue).toEqual([]);
   });
 });

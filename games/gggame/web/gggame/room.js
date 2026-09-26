@@ -2,6 +2,8 @@ import { GGGame, HANDS } from './rules.js';
 import { BotController } from './bots.js';
 
 export const GRACE_MS = 75_000;
+export const HOST_RECONNECT_MS = 15_000;
+export const HOST_SILENCE_MS = 45_000;
 export const IDLE_MS = 30 * 60_000;
 const allowed = new Set(['pick', 'knife', 'move', 'wear', 'strip', 'execute']);
 const fail = reason => ({ ok: false, reason });
@@ -9,6 +11,7 @@ const fail = reason => ({ ok: false, reason });
 /** One authoritative room; independent of HTTP, sockets and hosting provider. */
 export class Room {
   constructor(code, now = Date.now(), saved) {
+    this.match = null; this.pendingResults = []; this.hostDisconnectedAt = null;
     this.code = code; this.game = new GGGame(); this.members = [];
     this.host = null; this.wall = now; this.touched = now; this.expired = false; this.botAt = now + 1000;
     if (saved) {
@@ -20,6 +23,7 @@ export class Room {
   }
   save() {
     return structuredClone({ code: this.code, members: this.members, host: this.host,
+      match: this.match, pendingResults: this.pendingResults, hostDisconnectedAt: this.hostDisconnectedAt,
       wall: this.wall, touched: this.touched, expired: this.expired, botAt: this.botAt,
       game: { state: this.game.state, picks: [...this.game.picks], sequence: this.game.sequence } });
   }
@@ -68,18 +72,24 @@ export class Room {
       else {
         this.members.forEach((member, i) => { member.playerId = `p${i}`; });
         reply = this.game.start(this.members.map(member => member.name));
+        this.match = { id: crypto.randomUUID(), roster: this.members.filter(m => !m.bot).map(m => ({ name: m.name, playerId: m.playerId })), recorded: false };
         this.botAt = now + 1000;
       }
     } else if (allowed.has(msg.type)) {
       // The authenticated session supplies the actor. Client actor/time/state are ignored.
       reply = this.game.invoke({ type: msg.type, actor: m.playerId, hand: msg.hand, target: msg.target });
     } else reply = fail('未知操作。');
+    this.finishMatch();
     m.lastSeq = msg.seq; m.lastReply = reply;
     return reply;
   }
   removeMember(id, reason) {
     const m = this.members.find(m => m.id === id);
     if (!m) return fail('该成员已经离开。');
+    if (id === this.host) {
+      this.close();
+      return { ok: true, removed: { id, reason } };
+    }
     const p = this.game.state.players.find(p => p.id === m.playerId);
     if (p?.alive && this.game.state.phase !== 'over') {
       p.alive = false; p.steps = 0; p.active = null; p.queue = [];
@@ -91,6 +101,39 @@ export class Room {
     if (!this.members.some(m => !m.bot && !m.departed)) this.expired = true;
     return { ok: true, removed: { id, reason } };
   }
+  finishMatch() {
+    if (!this.match || this.match.recorded || this.game.state.phase !== 'over') return;
+    const players = this.match.roster.map(p => {
+      const actor = this.game.state.players.find(player => player.id === p.playerId);
+      return { name: p.name, won: p.playerId === this.game.state.result, kills: actor?.kills || 0, wears: actor?.wears || 0 };
+    });
+    this.pendingResults.push({ id: this.match.id, players });
+    this.match.recorded = true;
+  }
+  close() {
+    if (this.game.state.phase !== 'over') {
+      this.game.state.phase = 'over'; this.game.state.result = null;
+      for (const p of this.game.state.players) { p.active = null; p.queue = []; p.steps = 0; }
+    }
+    this.finishMatch(); this.expired = true;
+  }
+  connected(id, now) {
+    this.advance(now);
+    if (this.expired) return false;
+    const m = this.members.find(m => m.id === id && !m.departed);
+    if (!m) return false;
+    m.lastSeen = now;
+    if (id === this.host) this.hostDisconnectedAt = null;
+    return true;
+  }
+  disconnected(id, now) {
+    if (id === this.host && this.hostDisconnectedAt === null) this.hostDisconnectedAt = now;
+  }
+  hostDeadline() {
+    const host = this.members.find(m => m.id === this.host);
+    return Math.min(host ? host.lastSeen + HOST_SILENCE_MS : Infinity,
+      this.hostDisconnectedAt === null ? Infinity : this.hostDisconnectedAt + HOST_RECONNECT_MS);
+  }
   reconcile() {
     const s = this.game.state;
     if (!['lobby', 'over'].includes(s.phase)) {
@@ -100,12 +143,13 @@ export class Room {
       else if (s.phase === 'rps' && alive.every(p => this.game.picks.has(p.id))) this.game.resolve();
       else if (s.phase === 'action') this.game.checkRoundEnd();
     }
+    this.finishMatch();
     if (['lobby', 'over'].includes(s.phase)) this.members = this.members.filter(m => !m.departed);
     if (!this.members.some(m => m.id === this.host && !m.departed)) this.host = this.members.find(m => !m.departed && !m.bot)?.id ?? null;
   }
   nextEvent() {
     const s = this.game.state;
-    const events = [this.touched + IDLE_MS];
+    const events = [this.touched + IDLE_MS, this.hostDeadline()];
     for (const m of this.members) if (!m.departed && !m.bot) events.push(m.lastSeen + GRACE_MS);
     if (!['lobby', 'over'].includes(s.phase) && this.members.some(m => m.bot)) events.push(this.botAt);
     if (['reveal', 'between'].includes(s.phase)) events.push(this.wall + Math.max(0, s.revealUntil - s.time) * 1000);
@@ -120,7 +164,7 @@ export class Room {
       const due = this.nextEvent();
       const end = Math.min(now, due);
       this.game.update(Math.max(0, end - this.wall) / 1000); this.wall = end;
-      if (end >= this.touched + IDLE_MS) { this.expired = true; return; }
+      if (end >= this.touched + IDLE_MS || end >= this.hostDeadline()) { this.close(); return; }
       for (const m of this.members) {
         if (!m.departed && !m.bot && end >= m.lastSeen + GRACE_MS) {
           m.departed = true;

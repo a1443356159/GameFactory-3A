@@ -92,7 +92,7 @@ export class Courtyard {
     const events = snapshot.game.events || [];
     if (this.lastEvent !== undefined) for (const event of events) if (event.id > this.lastEvent && event.type === 'action_completed') {
       const actor = this.actors.get(event.target && ['strip', 'execute'].includes(event.action) ? event.target : event.actor);
-      if (actor) this.burst(actor, event.success ? { wear: '+1 护甲', knife: '已持刀', move: '到家了', strip: '−1 护甲', execute: '出局' }[event.action] : '未生效', event.success);
+      if (actor) this.burst(actor, event.success ? { wear: '穿上 1 条裤子', knife: '已持刀', move: '到家了', strip: '脱掉 1 条裤子', execute: '出局' }[event.action] : '未生效', event.success);
     }
     this.lastEvent = events.at(-1)?.id ?? 0;
     this.active = !['rps', 'reveal'].includes(snapshot.game.phase);

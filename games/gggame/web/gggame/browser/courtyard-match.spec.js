@@ -6,7 +6,8 @@ test('3D full match uses all five actions, scene targeting, reconnect and server
   const errors = []; for (const page of [a, b, c]) page.on('pageerror', e => errors.push(e.message));
   const state = () => a.evaluate(() => window.__A3GAME_GAME__?.getState());
   const phase = expected => expect.poll(async () => (await state())?.phase, { timeout: 15000 }).toBe(expected);
-  await a.goto('/projects/GGgame'); await a.locator('#nickname').fill('阿橙'); await a.locator('#create').click();
+  const playerName = `验收${Date.now().toString(36)}`;
+  await a.goto('/projects/GGgame'); await a.locator('#nickname').fill(playerName); await a.locator('#create').click();
   await expect(a.locator('#world-canvas')).toHaveAttribute('data-ready', 'true', { timeout: 30000 });
   const code = await a.locator('#room-label').textContent();
   for (const [page, name] of [[b, '小蓝'], [c, '大麦']]) {
@@ -53,9 +54,14 @@ test('3D full match uses all five actions, scene targeting, reconnect and server
   expect((await state()).result).toBe('p0');
   await a.screenshot({ path: info.outputPath('winner-desktop.png') });
   expect(await a.evaluate(() => window.__A3GAME_GAME__.host.getStats().triangles)).toBeGreaterThan(1000);
+  const board = () => a.evaluate(async name => (await (await fetch(`${document.querySelector('#gggame').dataset.endpoint || 'http://127.0.0.1:8787'}/api/leaderboard?name=${encodeURIComponent(name)}`)).json()).player, playerName);
+  await expect.poll(board).toMatchObject({ games: 1, wins: 1, kills: 2, wears: 1 });
+  await a.locator('#leaderboard-open').click(); await expect(a.locator('#leaderboard-personal')).toContainText('击杀 2 人');
+  await a.screenshot({ path: info.outputPath('leaderboard-desktop.png') }); await a.locator('#leaderboard-close').click();
   await a.locator('#rematch').click(); await phase('rps');
   expect((await state()).players.every(p => p.alive && p.armor === 1 && !p.knife)).toBe(true);
   await a.locator('#leave').click(); await expect(a.locator('#entrance')).toBeVisible();
+  await expect.poll(board).toMatchObject({ games: 2, wins: 1, kills: 2, wears: 1 });
   expect(errors).toEqual([]);
   await Promise.all(contexts.map(context => context.close()));
   await a.video().saveAs(info.outputPath('courtyard-match.webm'));

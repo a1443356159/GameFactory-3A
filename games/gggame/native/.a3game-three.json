@@ -1,0 +1,11 @@
+{
+  "engine": "three_js",
+  "api_version": "v1",
+  "engine_version": "",
+  "engine_root": "",
+  "project_dir": "/home/yyy/GameFactory-3A/games/gggame/native",
+  "project_name": "native",
+  "dev_server_port": 5173,
+  "runtime_control_port": 30040,
+  "package_manager": "npm"
+}

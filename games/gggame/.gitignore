@@ -1,0 +1,6 @@
+native/packages/a3game-playable/
+native/dist/
+native/.a3game/
+native/test-results/
+native/playwright-report/
+.tmp/

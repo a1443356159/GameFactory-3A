@@ -1,0 +1,42 @@
+{
+  "schema_version": "gamefactory3a.ui_binding_manifest.v1",
+  "mechanic_contract": "mechanic_contract.json",
+  "contract_version": 2,
+  "screens": {
+    "lobby": [
+      "start"
+    ],
+    "rps": [
+      "players",
+      "phase",
+      "round",
+      "attempt",
+      "pick"
+    ],
+    "action": [
+      "players",
+      "time",
+      "logs",
+      "move",
+      "wear",
+      "knife",
+      "strip",
+      "execute",
+      "reason"
+    ],
+    "pause": [
+      "paused",
+      "pause"
+    ],
+    "result": [
+      "result",
+      "start"
+    ]
+  },
+  "state_owner": "GGGame",
+  "presentation_only": [
+    "selected target",
+    "dialog state",
+    "toast timeout"
+  ]
+}

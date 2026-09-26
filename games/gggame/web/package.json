@@ -12,8 +12,8 @@
     "preview": "vite preview --host 127.0.0.1 --port 4321",
     "rooms:dev": "wrangler dev --env local --port 8787",
     "rooms:deploy": "wrangler deploy --env=\"\"",
-    "test": "vitest run gggame/tests",
-    "test:e2e": "playwright test --config gggame/playwright.config.js",
+    "test": "vitest run gggame/tests --reporter=default --reporter=json --outputFile=.a3game/reports/vitest-report.json",
+    "test:e2e": "node scripts/test-browser.mjs",
     "export:homepage": "node scripts/export-homepage.mjs"
   },
   "devDependencies": {
@@ -21,5 +21,12 @@
     "wrangler": "^4.141.0",
     "vitest": "^5.0.2",
     "@playwright/test": "^1.63.0"
-  }
+  },
+  "dependencies": {
+    "three": "0.185.0",
+    "@a3game/playable": "file:./packages/a3game-playable"
+  },
+  "workspaces": [
+    "packages/*"
+  ]
 }

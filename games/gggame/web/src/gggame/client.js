@@ -1,11 +1,14 @@
 import { GGGame, ACTION_NAMES, ACTION_SECONDS, HAND_NAMES } from '../../gggame/rules.js';
 import { CueTracker, GameAudio } from './audio.js';
+import './world.css';
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const storageKey = 'gggame-session-v1';
 let session, socket, snapshot, receivedAt = 0, retry, attempts = 0, stopped = false, picked = null;
 let leaving = false, displayedPhase;
+let courtyard, courtyardLoading, worldGeneration = 0, worldEnabled = true, worldFailed = false;
+try { worldEnabled = localStorage.getItem('gggame-world') !== 'off'; } catch { /* Optional. */ }
 const sounds = new GameAudio(), cues = new CueTracker();
 function soundLabel() {
   $('sound-toggle').textContent = sounds.enabled ? '音效：开' : '音效：关';
@@ -106,6 +109,7 @@ function render() {
   $('room-label').textContent = snapshot.code;
   $('gggame').dataset.phase = s.phase;
   const isLobby = s.phase === 'lobby', focused = ['rps', 'reveal'].includes(s.phase);
+  renderWorld(focused);
   $('lobby').hidden = !isLobby; $('match').hidden = isLobby || focused;
   $('rps-stage').hidden = s.phase !== 'rps'; $('reveal-stage').hidden = s.phase !== 'reveal';
   if (displayedPhase !== s.phase) {
@@ -191,7 +195,7 @@ $('join-form').onsubmit = event => { event.preventDefault(); join(false); };
 $('resume').onclick = connect;
 $('start').onclick = () => send('start'); $('rematch').onclick = () => send('rematch');
 $('add-bot').onclick = () => send('addBot');
-$('destination').onchange = updateControls; $('target').onchange = updateControls;
+$('destination').onchange = updateControls; $('target').onchange = () => { courtyard?.select($('target').value); updateControls(); };
 document.querySelectorAll('[data-hand]').forEach(button => { button.onclick = () => { picked = button.dataset.hand; send('pick', { hand: picked }); }; });
 document.querySelectorAll('[data-action]').forEach(button => { button.onclick = () => { const { actor, ...command } = commandFor(button.dataset.action); send(command.type, command); }; });
 $('invite').onclick = async () => {
@@ -200,6 +204,8 @@ $('invite').onclick = async () => {
   catch { notice(`邀请链接：${link}`); }
 };
 function resetRoom(message) {
+  worldGeneration++; courtyard?.dispose(); courtyard = null; courtyardLoading = null;
+  delete globalThis.__A3GAME_GAME__;
   stopped = true; clearTimeout(retry);
   const previous = socket; socket = null; previous?.close();
   session = null; snapshot = null; picked = null; displayedPhase = undefined; leaving = false;
@@ -211,6 +217,64 @@ function resetRoom(message) {
   $('leave').disabled = false; $('leave').textContent = '退出房间';
   status('尚未连接'); notice(message); window.scrollTo(0, 0);
 }
+function worldFallback() {
+  worldFailed = true; courtyard?.suspend(); $('world-stage').hidden = true;
+  $('world-hint').textContent = '当前设备无法显示 3D，已切换文字视图，仍可正常联机。';
+  $('gggame').dataset.world = 'off'; $('world-toggle').textContent = '重试 3D 视图'; $('world-toggle').setAttribute('aria-pressed', 'false');
+}
+async function renderWorld(focused) {
+  $('world-shell').hidden = focused;
+  const visible = worldEnabled && !worldFailed;
+  $('gggame').dataset.world = visible ? 'on' : 'off'; $('world-stage').hidden = !visible;
+  $('world-toggle').textContent = worldFailed ? '重试 3D 视图' : worldEnabled ? '切换文字视图' : '打开 3D 小院';
+  $('world-toggle').setAttribute('aria-pressed', String(visible));
+  if (!visible) { courtyard?.suspend(); return; }
+  if (courtyard) { courtyard.update(snapshot); return; }
+  if (courtyardLoading || focused) return;
+  const generation = worldGeneration;
+  $('world-loading').hidden = false;
+  courtyardLoading = import('../../packages/gggame-3d/courtyard.js');
+  let scene;
+  try {
+    const { Courtyard } = await courtyardLoading;
+    if (generation !== worldGeneration || !snapshot) return;
+    scene = new Courtyard({ container: $('world-canvas'), labels: $('world-labels'), onFailure: worldFallback,
+      onHome: id => {
+        if (snapshot?.game.phase !== 'action') { notice('行动阶段可以消耗 1 步前往这户人家。'); return; }
+        $('destination').value = id; updateControls();
+        const command = commandFor('move'), reason = predictor.reason(command);
+        if (reason) notice(reason); else send('move', { target: id });
+      },
+      onPlayer: id => {
+        if (id === snapshot?.playerId) { courtyard?.findSelf(); return; }
+        if (snapshot?.game.phase === 'lobby') return;
+        $('target').value = id; courtyard?.select(id); updateControls();
+        const p = snapshot.game.players.find(p => p.id === id);
+        if (p) notice(`已选择 ${p.name}，可在下方安排脱裤子或割。`);
+      },
+    });
+    await scene.init();
+    if (generation !== worldGeneration || !snapshot) { scene.dispose(); return; }
+    courtyard = scene; courtyard.update(snapshot); if (!worldEnabled) courtyard.suspend();
+    $('world-loading').hidden = true;
+    // Read-only public playtest observation; it cannot modify server state.
+    globalThis.__A3GAME_GAME__ = { host: courtyard.host, getState: () => snapshot?.game };
+  } catch (error) { console.warn('GGgame 3D unavailable:', error); scene?.dispose(); if (generation === worldGeneration) worldFallback(); }
+  finally { if (generation === worldGeneration) courtyardLoading = null; }
+}
+$('world-toggle').onclick = () => {
+  if (worldFailed) { worldGeneration++; courtyard?.dispose(); courtyard = null; courtyardLoading = null; worldFailed = false; worldEnabled = true; }
+  else worldEnabled = !worldEnabled;
+  try { localStorage.setItem('gggame-world', worldEnabled ? 'on' : 'off'); } catch { /* Optional. */ }
+  $('world-hint').textContent = '每个人的家都是独立地点。路上可以擦肩而过，但不能交手。';
+  renderWorld(['rps', 'reveal'].includes(snapshot?.game.phase));
+};
+$('world-zoom-in').onclick = () => courtyard?.setZoom(courtyard.zoom * .8);
+$('world-zoom-out').onclick = () => courtyard?.setZoom(courtyard.zoom * 1.2);
+$('world-rotate').onclick = () => courtyard?.rotate(Math.PI / 4);
+$('world-fit').onclick = () => courtyard?.fit(); $('world-self').onclick = () => courtyard?.findSelf();
+document.addEventListener('visibilitychange', () => { if (document.hidden) courtyard?.suspend(); else if (worldEnabled) courtyard?.resume(); });
+window.addEventListener('pagehide', () => courtyard?.suspend());
 $('leave').onclick = async () => {
   if (!session || leaving) return;
   leaving = true; $('leave').disabled = true; $('leave').textContent = '正在退出…'; updateControls();

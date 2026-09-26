@@ -2,6 +2,8 @@ import { test, expect } from '@playwright/test';
 
 async function observe(page) {
   await page.addInitScript(() => {
+    // Keep the established text-view regression; courtyard-match covers 3D.
+    localStorage.setItem('gggame-world', 'off');
     window.audioCues = []; window.oscillatorStarts = 0;
     document.addEventListener('gggame:sound', event => window.audioCues.push(event.detail.name));
     const start = OscillatorNode.prototype.start;

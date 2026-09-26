@@ -1,4 +1,4 @@
-import { GGGame, ACTION_NAMES, ACTION_SECONDS, HAND_NAMES } from '../../gggame/rules.js';
+import { GGGame, ACTION_NAMES, ACTION_SECONDS, HAND_NAMES, REVEAL_SECONDS, TIE_REVEAL_SECONDS } from '../../gggame/rules.js';
 import { CueTracker, GameAudio } from './audio.js';
 import './world.css';
 
@@ -86,7 +86,7 @@ function connect() {
     status('连接已断开'); updateControls();
     if (stopped) return;
     if ([4001, 1008].includes(event.code)) { stopped = true; notice(event.code === 4001 ? '你已在另一个页面连接此身份。可点击“恢复上次连接”重新连接。' : '连接因无效或过于频繁的操作关闭，请刷新重试。'); return; }
-    notice('连接中断，正在重连；75 秒内回来仍可继续本局。');
+    notice(snapshot?.host === snapshot?.you ? '房主连接中断，正在重连；断开后 15 秒未恢复将关闭房间。' : '连接中断，正在重连；75 秒内回来仍可继续本局，房主须保持在线。');
     if (++attempts > 12) { notice('暂时无法连接房间。请检查网络，或刷新后重新加入。'); return; }
     retry = setTimeout(connect, Math.min(1000 * 2 ** Math.min(attempts, 3), 8000));
   };
@@ -180,7 +180,7 @@ function animate() {
   if (snapshot.game.phase === 'reveal') {
     const remaining = Math.max(0, snapshot.game.revealUntil - time);
     $('reveal-countdown').textContent = remaining > 0 ? `${Math.ceil(remaining)} 秒后${snapshot.game.tie ? '重新出拳' : '开始行动'}` : '等待其他街坊一起进入下一阶段…';
-    $('reveal-progress').style.width = `${Math.min(100, remaining / 5 * 100)}%`;
+    $('reveal-progress').style.width = `${Math.min(100, remaining / (snapshot.game.tie ? TIE_REVEAL_SECONDS : REVEAL_SECONDS) * 100)}%`;
   }
   for (const p of snapshot.game.players) if (p.active) {
     const remaining = Math.max(0, p.active.endsAt - time);
@@ -274,7 +274,8 @@ $('world-zoom-out').onclick = () => courtyard?.setZoom(courtyard.zoom * 1.2);
 $('world-rotate').onclick = () => courtyard?.rotate(Math.PI / 4);
 $('world-fit').onclick = () => courtyard?.fit(); $('world-self').onclick = () => courtyard?.findSelf();
 document.addEventListener('visibilitychange', () => { if (document.hidden) courtyard?.suspend(); else if (worldEnabled) courtyard?.resume(); });
-window.addEventListener('pagehide', () => courtyard?.suspend());
+window.addEventListener('pagehide', () => { courtyard?.suspend(); socket?.close(1000, '页面关闭'); });
+window.addEventListener('pageshow', event => { if (event.persisted && session) connect(); });
 $('leave').onclick = async () => {
   if (!session || leaving) return;
   leaving = true; $('leave').disabled = true; $('leave').textContent = '正在退出…'; updateControls();
@@ -296,3 +297,32 @@ $('room').addEventListener('click', event => {
 setInterval(animate, 100);
 setInterval(() => { if (!leaving && socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'ping' })); }, 15000);
 if (session && endpoint && (!invitedCode || invitedCode === session.code)) connect();
+
+let leaderboardRequest;
+async function refreshLeaderboard() {
+  leaderboardRequest?.abort();
+  const request = leaderboardRequest = new AbortController();
+  const name = $('leaderboard-name').value.trim();
+  $('leaderboard-status').textContent = '正在读取街坊战绩…';
+  $('leaderboard-rows').replaceChildren(); $('leaderboard-personal').hidden = true;
+  try {
+    if (!endpoint) throw Error('联机服务尚未配置。');
+    const response = await fetch(`${endpoint}/api/leaderboard?name=${encodeURIComponent(name)}`, { signal: AbortSignal.any([request.signal, AbortSignal.timeout(10000)]) });
+    const body = await response.json();
+    if (!response.ok) throw Error(body.reason || '读取失败，请稍后重试。');
+    const rate = value => `${(value * 100).toFixed(1)}%`;
+    $('leaderboard-rows').innerHTML = body.rows.map(p => `<tr><td>${p.rank}</td><th scope="row">${escape(p.name)}</th><td>${p.games}</td><td>${p.wins}</td><td>${rate(p.winRate)}</td><td>${p.kills}</td><td>${p.wears}</td></tr>`).join('');
+    $('leaderboard-status').textContent = body.rows.length ? '已更新 · 每局结束后记录' : '还没有战绩，来完成第一局吧。';
+    if (name) {
+      $('leaderboard-personal').hidden = false;
+      $('leaderboard-personal').textContent = body.player ? `${body.player.name} · 游玩 ${body.player.games} 次 · 获胜 ${body.player.wins} 次 · 胜率 ${rate(body.player.winRate)} · 击杀 ${body.player.kills} 人 · 穿裤子 ${body.player.wears} 次` : `${name} 暂无战绩，进行中的对局会在结束后记录。`;
+    }
+  } catch (error) { if (!request.signal.aborted) $('leaderboard-status').textContent = error.message; }
+}
+$('leaderboard-open').onclick = () => {
+  $('leaderboard-name').value = session?.name || $('nickname').value.trim();
+  $('leaderboard').showModal(); refreshLeaderboard();
+};
+$('leaderboard-close').onclick = () => $('leaderboard').close();
+$('leaderboard').addEventListener('close', () => leaderboardRequest?.abort());
+$('leaderboard-search').onsubmit = event => { event.preventDefault(); refreshLeaderboard(); };

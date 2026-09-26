@@ -63,6 +63,7 @@ describe('authoritative multiplayer room', () => {
   it('lets a player reconnect in grace and forfeits a missing player without blocking RPS', () => {
     const { room, users, send } = setup(3);
     send(0, { type: 'pick', hand: 'rock' }); send(1, { type: 'pick', hand: 'scissors' });
+    room.command(users[0].memberId, { type: 'ping' }, 30000);
     room.command(users[0].memberId, { type: 'ping' }, 60000);
     room.command(users[1].memberId, { type: 'ping' }, 60000);
     expect(room.authenticate(users[2].token)).toBeTruthy();
@@ -71,14 +72,15 @@ describe('authoritative multiplayer room', () => {
     expect(room.game.state.phase).toBe('reveal');
     expect(room.game.state.players[0].steps).toBe(1);
   });
-  it('transfers an absent host, expires abandoned rooms, and never authenticates bots', () => {
+  it('closes a room when its host is silent, even if guests or bots remain', () => {
     const r = new Room('ABCDEF123456', 0);
     const a = r.join('甲', 0), b = r.join('乙', 0);
     r.command(a.memberId, { type: 'addBot', seq: 1 }, 0);
     expect(r.authenticate(null)).toBeUndefined();
-    r.command(b.memberId, { type: 'ping' }, 60000); r.advance(GRACE_MS);
-    expect(r.host).toBe(b.memberId);
-    r.advance(2_000_000); expect(r.expired).toBe(true);
+    r.command(b.memberId, { type: 'ping' }, 30000);
+    r.advance(44999); expect(r.expired).toBe(false);
+    r.advance(45000); expect(r.expired).toBe(true);
+    expect(r.command(b.memberId, { type: 'start', seq: 1 }, 45000).ok).toBe(false);
   });
   it('runs computer players on the server without a human opponent browser', () => {
     const r = new Room('ABCDEF123456', 0); const a = r.join('甲', 0);

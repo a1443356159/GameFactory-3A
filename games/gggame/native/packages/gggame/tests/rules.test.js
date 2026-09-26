@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { GGGame, ACTION_SECONDS } from '../src/rules.js';
+import { GGGame, ACTION_SECONDS, REVEAL_SECONDS } from '../src/rules.js';
 import { BotController } from '../src/bots.js';
 function game(n = 4) { const g = new GGGame(); g.start(Array.from({length:n},(_,i)=>`玩家${i}`)); return g; }
 function round(g, hands) {
   hands.forEach((hand,i)=>{if(g.getState().players[i].alive) expect(g.invoke({type:'pick',actor:`p${i}`,hand}).ok).toBe(true);});
-  g.update(1.3);
+  g.update(REVEAL_SECONDS);
 }
 const action = (g,actor,type,target) => g.invoke({actor,type,target});
 function fixture(players) {

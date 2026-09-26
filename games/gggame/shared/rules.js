@@ -1,5 +1,6 @@
 export const HANDS = ['rock', 'scissors', 'paper'];
 export const HAND_NAMES = { rock: '石头', scissors: '剪刀', paper: '布' };
+export const REVEAL_SECONDS = 5;
 const BEATS = { rock: 'scissors', scissors: 'paper', paper: 'rock' };
 export const ACTION_SECONDS = { knife: 1, move: 2, wear: 1, strip: 3, execute: 3 };
 export const ACTION_NAMES = { knife: '拿刀', move: '移动', wear: '穿裤子', strip: '脱裤子', execute: '割' };
@@ -20,6 +21,11 @@ export class GGGame {
   emit(type, data = {}) {
     this.state.revision++;
     const event = { type, ...data };
+    if (['revealed', 'action_completed', 'game_over'].includes(type)) {
+      this.state.events ??= [];
+      this.state.events.push({ id: this.state.revision, time: this.state.time, ...event });
+      if (this.state.events.length > 80) this.state.events.shift();
+    }
     for (const fn of this.listeners) fn(event);
   }
   log(text, kind = 'info') {
@@ -31,7 +37,7 @@ export class GGGame {
     this.state = {
       phase: 'rps', time: 0, round: 1, attempt: 1, revision: this.state.revision + 1,
       paused: false, result: null, logs: [], revealUntil: 0,
-      players: names.map((name, i) => ({ id: `p${i}`, name: name.trim().slice(0, 24), home: `p${i}`, location: `p${i}`, armor: 1, knife: false, alive: true, steps: 0, active: null, queue: [], hand: null, picked: false, won: false })),
+      players: names.map((name, i) => ({ id: `p${i}`, name: name.trim().slice(0, 24), home: `p${i}`, location: `p${i}`, armor: 1, knife: false, alive: true, steps: 0, active: null, queue: [], hand: null, picked: false, won: false, lossStreak: 0, pityAward: false })),
     };
     this.picks.clear();
     this.log('所有人回到自己家，穿上 1 条裤子。猜拳开始！');
@@ -63,9 +69,15 @@ export class GGGame {
     const losers = winning ? alive.filter(p => this.picks.get(p.id) !== winning).length : 0;
     for (const p of alive) {
       p.hand = this.picks.get(p.id); p.won = p.hand === winning; p.steps = p.won ? losers : 0;
+      p.lossStreak ??= 0; p.pityAward = false;
+      if (winning) {
+        p.lossStreak = p.won ? 0 : p.lossStreak + 1;
+        if (p.lossStreak >= 7) { p.steps = 3; p.pityAward = true; p.lossStreak = 0; }
+      }
     }
-    this.state.phase = 'reveal'; this.state.tie = !winning; this.state.revealUntil = this.state.time + 1.3;
+    this.state.phase = 'reveal'; this.state.tie = !winning; this.state.revealUntil = this.state.time + REVEAL_SECONDS;
     this.log(winning ? `${alive.filter(p => p.won).map(p => p.name).join('、')}获胜，各得 ${losers} 步。` : '平局！所有人重新出拳。', winning ? 'reward' : 'info');
+    for (const p of alive.filter(p => p.pityAward)) this.log(`${p.name}触发七连败保底，获得 3 步，连败重新累计。`, 'reward');
     this.emit('revealed');
   }
   plannedPlayer(p) {
@@ -196,7 +208,7 @@ export class GGGame {
     const s = this.state;
     if (newRound) { s.round++; s.attempt = 1; } else s.attempt++;
     s.phase = 'rps'; s.tie = false; this.picks.clear();
-    for (const p of s.players) { p.steps = 0; p.hand = null; p.picked = false; p.won = false; p.active = null; p.queue = []; }
+    for (const p of s.players) { p.steps = 0; p.hand = null; p.picked = false; p.won = false; p.pityAward = false; p.active = null; p.queue = []; }
     this.emit('round_started');
   }
 }

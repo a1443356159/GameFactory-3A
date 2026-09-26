@@ -52,7 +52,14 @@ export class Room {
     if (msg.seq === m.lastSeq) return m.lastReply;
     if (msg.seq < m.lastSeq) return fail('旧操作已忽略。');
     let reply;
-    if (msg.type === 'addBot') {
+    if (msg.type === 'leave') {
+      reply = this.removeMember(id, 'left');
+    } else if (msg.type === 'kick') {
+      if (id !== this.host) reply = fail('只有房主可以踢人。');
+      else if (this.game.state.phase !== 'lobby') reply = fail('只能在大厅踢人，对局中不能移除成员。');
+      else if (msg.target === id) reply = fail('请使用退出房间离开。');
+      else reply = this.removeMember(msg.target, 'kicked');
+    } else if (msg.type === 'addBot') {
       reply = id === this.host ? this.join(`电脑 ${this.members.filter(m => m.bot).length + 1}`, now, true) : fail('只有房主可以添加电脑。');
     } else if (msg.type === 'start' || msg.type === 'rematch') {
       if (id !== this.host) reply = fail('只有房主可以开始。');
@@ -69,6 +76,32 @@ export class Room {
     } else reply = fail('未知操作。');
     m.lastSeq = msg.seq; m.lastReply = reply;
     return reply;
+  }
+  removeMember(id, reason) {
+    const m = this.members.find(m => m.id === id);
+    if (!m) return fail('该成员已经离开。');
+    const p = this.game.state.players.find(p => p.id === m.playerId);
+    if (p?.alive && this.game.state.phase !== 'over') {
+      p.alive = false; p.steps = 0; p.active = null; p.queue = [];
+      this.game.picks.delete(p.id);
+      this.game.log(`${m.name}${reason === 'kicked' ? '被房主踢出' : '退出房间'}，本局出局。`, 'out');
+    }
+    this.members = this.members.filter(m => m.id !== id);
+    this.reconcile();
+    if (!this.members.some(m => !m.bot && !m.departed)) this.expired = true;
+    return { ok: true, removed: { id, reason } };
+  }
+  reconcile() {
+    const s = this.game.state;
+    if (!['lobby', 'over'].includes(s.phase)) {
+      const alive = s.players.filter(p => p.alive);
+      if (!alive.length) { s.phase = 'over'; s.result = null; }
+      else if (alive.length === 1) this.game.checkRoundEnd();
+      else if (s.phase === 'rps' && alive.every(p => this.game.picks.has(p.id))) this.game.resolve();
+      else if (s.phase === 'action') this.game.checkRoundEnd();
+    }
+    if (['lobby', 'over'].includes(s.phase)) this.members = this.members.filter(m => !m.departed);
+    if (!this.members.some(m => m.id === this.host && !m.departed)) this.host = this.members.find(m => !m.departed && !m.bot)?.id ?? null;
   }
   nextEvent() {
     const s = this.game.state;
@@ -113,17 +146,7 @@ export class Room {
           }
         }
       }
-      if (!['lobby', 'over'].includes(s.phase)) {
-        const alive = s.players.filter(p => p.alive);
-        if (!alive.length) { s.phase = 'over'; s.result = null; }
-        else if (alive.length === 1) this.game.checkRoundEnd();
-        else if (s.phase === 'rps' && alive.every(p => this.game.picks.has(p.id))) this.game.resolve();
-        else if (s.phase === 'action') this.game.checkRoundEnd();
-      }
-      if (['lobby', 'over'].includes(s.phase)) {
-        this.members = this.members.filter(m => !m.departed);
-      }
-      if (!this.members.some(m => m.id === this.host && !m.departed)) this.host = this.members.find(m => !m.departed && !m.bot)?.id ?? null;
+      this.reconcile();
       if (end >= now) break;
     }
   }

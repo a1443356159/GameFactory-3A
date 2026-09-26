@@ -1,9 +1,20 @@
 import { GGGame, ACTION_NAMES, ACTION_SECONDS, HAND_NAMES } from '../../gggame/rules.js';
+import { CueTracker, GameAudio } from './audio.js';
 
 const $ = id => document.getElementById(id);
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const storageKey = 'gggame-session-v1';
 let session, socket, snapshot, receivedAt = 0, retry, attempts = 0, stopped = false, picked = null;
+let leaving = false, displayedPhase;
+const sounds = new GameAudio(), cues = new CueTracker();
+function soundLabel() {
+  $('sound-toggle').textContent = sounds.enabled ? '音效：开' : '音效：关';
+  $('sound-toggle').setAttribute('aria-pressed', String(sounds.enabled));
+}
+soundLabel();
+document.addEventListener('pointerdown', () => sounds.unlock(), { capture: true });
+document.addEventListener('keydown', () => sounds.unlock(), { capture: true });
+$('sound-toggle').onclick = () => { sounds.setEnabled(!sounds.enabled); soundLabel(); };
 let endpoint = $('gggame').dataset.endpoint;
 if (!endpoint && ['localhost', '127.0.0.1'].includes(location.hostname)) endpoint = 'http://127.0.0.1:8787';
 const predictor = new GGGame();
@@ -31,13 +42,13 @@ async function join(create) {
     });
     const body = await response.json();
     if (!response.ok || !body.ok) throw Error(body.reason || '加入失败。');
-    session = { ...body, name, seq: 0 }; store(); connect();
+    cues.reset(); session = { ...body, name, seq: 0 }; store(); connect();
   } catch (error) { notice(`无法加入：${error.message} 请检查网络后重试。`); }
   finally { $('create').disabled = false; $('join-form').querySelector('[type=submit]').disabled = false; }
 }
 function connect() {
   if (!session || !endpoint) return;
-  stopped = false; clearTimeout(retry);
+  stopped = false; cues.reset(); clearTimeout(retry);
   if (socket) { socket.onclose = null; socket.close(); }
   status('连接中…');
   const address = new URL(`${endpoint}/api/rooms/${session.code}/ws`);
@@ -48,14 +59,17 @@ function connect() {
     for (const command of pending.values()) current.send(JSON.stringify(command));
   };
   current.onmessage = event => {
+    if (current !== socket) return;
     const message = JSON.parse(event.data);
+    if (message.type === 'removed') { resetRoom(message.reason === 'kicked' ? '你已被房主踢出房间。' : '已退出房间。'); return; }
     if (message.type === 'state') {
-      if (message.expired) { stopped = true; notice('房间已过期，请创建新房间。'); current.close(); return; }
+      if (message.expired) { resetRoom('房间已关闭，请重新创建或加入。'); return; }
       const previousKey = snapshot && `${snapshot.game.round}:${snapshot.game.attempt}`;
       snapshot = message; receivedAt = performance.now();
       session.seq = Math.max(session.seq, message.commandSeq || 0); store();
       if (previousKey !== `${message.game.round}:${message.game.attempt}`) picked = null;
       predictor.state = message.game;
+      for (const cue of cues.take(message)) sounds.play(cue);
       render();
     } else if (message.type === 'ack' && message.seq) {
       pending.delete(message.seq);
@@ -63,6 +77,9 @@ function connect() {
     }
   };
   current.onclose = event => {
+    if (current !== socket) return;
+    if (event.code === 4003) { resetRoom('你已被房主踢出房间。'); return; }
+    if (event.code === 4002) { resetRoom(leaving ? '已退出房间。' : '房间已关闭，请重新加入。'); return; }
     status('连接已断开'); updateControls();
     if (stopped) return;
     if ([4001, 1008].includes(event.code)) { stopped = true; notice(event.code === 4001 ? '你已在另一个页面连接此身份。可点击“恢复上次连接”重新连接。' : '连接因无效或过于频繁的操作关闭，请刷新重试。'); return; }
@@ -73,7 +90,7 @@ function connect() {
   current.onerror = () => status('服务暂时不可达');
 }
 function send(type, extra = {}) {
-  if (socket?.readyState !== WebSocket.OPEN || !session) { notice('等待连接恢复后再操作。'); return; }
+  if (leaving || socket?.readyState !== WebSocket.OPEN || !session) { notice('等待连接恢复后再操作。'); return; }
   const command = { type, ...extra, seq: ++session.seq };
   pending.set(command.seq, command); store();
   socket.send(JSON.stringify(command)); notice('');
@@ -87,16 +104,35 @@ function render() {
   const { game: s, playerId, you, host, members } = snapshot;
   $('entrance').hidden = true; $('room').hidden = false;
   $('room-label').textContent = snapshot.code;
-  const isLobby = s.phase === 'lobby';
-  $('lobby').hidden = !isLobby; $('match').hidden = isLobby;
+  $('gggame').dataset.phase = s.phase;
+  const isLobby = s.phase === 'lobby', focused = ['rps', 'reveal'].includes(s.phase);
+  $('lobby').hidden = !isLobby; $('match').hidden = isLobby || focused;
+  $('rps-stage').hidden = s.phase !== 'rps'; $('reveal-stage').hidden = s.phase !== 'reveal';
+  if (displayedPhase !== s.phase) {
+    displayedPhase = s.phase; window.scrollTo(0, 0);
+    if (focused) $(s.phase === 'rps' ? 'rps-title' : 'reveal-title').focus({ preventScroll: true });
+  }
+  const kickButton = member => isLobby && host === you && member && member.id !== you ? `<button class="kick" data-kick="${escape(member.id)}" title="从大厅移出成员">踢出</button>` : '';
   if (isLobby) {
-    $('members').innerHTML = members.map(m => `<div class="member">${escape(m.name)}<em>${m.id === you ? '你 · ' : ''}${m.bot ? '电脑' : m.id === host ? '房主' : '已加入'}</em></div>`).join('');
+    $('members').innerHTML = members.map(m => `<div class="member">${escape(m.name)}<em>${m.id === you ? '你 · ' : ''}${m.bot ? '电脑' : m.id === host ? '房主' : '已加入'}</em>${kickButton(m)}</div>`).join('');
     $('start').disabled = host !== you || members.length < 2;
     $('add-bot').disabled = host !== you || members.length >= 64;
     $('host-hint').textContent = host === you ? `当前 ${members.length} 人，准备好了就开始。` : '等待房主开始游戏。';
     return;
   }
+  $('members').replaceChildren();
   const me = s.players.find(p => p.id === playerId);
+  const roundLabel = `ROUND ${String(s.round).padStart(2, '0')} · 第 ${s.attempt} 次猜拳`;
+  $('rps-round').textContent = roundLabel; $('reveal-round').textContent = roundLabel;
+  $('rps-title').textContent = !me?.alive ? '坐看街坊过招' : me.picked ? '已出拳，等大家亮手。' : '这一拳，出什么？';
+  $('rps-note').textContent = `${s.players.filter(p => p.alive && p.picked).length} / ${s.players.filter(p => p.alive).length} 人已出拳${!me?.alive ? ' · 你已出局，正在观战' : ''}`;
+  $('pick-status').innerHTML = s.players.filter(p => p.alive).map(p => `<div class="pick-person ${p.picked ? 'ready' : ''}"><span>${escape(p.name)}${p.id === playerId ? ' · 你' : ''}</span><small>${p.picked ? '已出拳' : '思考中'}</small>${kickButton(members.find(m => m.playerId === p.id))}</div>`).join('');
+  $('reveal-stage').dataset.outcome = s.tie ? 'tie' : me?.alive && me.won ? 'win' : 'lose';
+  $('reveal-title').textContent = s.tie ? '平局，再来一拳！' : !me?.alive ? '本轮结果' : me.pityAward ? '七连败保底，拿到 3 步！' : me.won ? '这一轮，你赢了！' : '这一轮，先守住。';
+  $('reward-value').textContent = me?.alive ? `+${me.steps}` : '观战';
+  $('reward-unit').hidden = !me?.alive;
+  $('reveal-note').textContent = s.tie ? '本次没人获得步数，倒计时结束后全员重新出拳。' : me?.pityAward ? '保底步数与普通步数一样使用，本次连败已清零。' : me?.won ? '这些步数可以用来行动，准备好你的下一步。' : `本轮没有步数 · 当前连败 ${me?.lossStreak || 0}/7`;
+  $('round-results').innerHTML = s.players.map(p => `<div class="result-person ${(p.won || p.pityAward) && p.alive ? 'won' : ''}" data-result-player="${p.id}"><span>${escape(p.name)}${p.id === playerId ? ' · 你' : ''}${p.pityAward ? '<em>七连败保底</em>' : ''}</span><small>${p.alive ? HAND_NAMES[p.hand] || '—' : '已出局'}</small><strong>${p.alive ? `${p.steps} 步` : '—'}</strong></div>`).join('');
   $('round').textContent = `ROUND ${String(s.round).padStart(2, '0')} · 第 ${s.attempt} 次猜拳`;
   const titles = { rps: me?.picked ? '已出拳，等大家亮手。' : '石头、剪刀，还是布？', reveal: s.tie ? '没分出胜负，再来！' : '赢家拿步数，准备行动。', action: '行动开始，手快有优势。', between: '步数用完，下一轮见。', over: s.result ? `${s.players.find(p => p.id === s.result)?.name} 获胜！` : '本局结束' };
   $('phase-title').textContent = titles[s.phase] || '';
@@ -109,7 +145,7 @@ function render() {
   $('rematch').hidden = s.phase !== 'over' || host !== you;
   const locationName = p => p.location === null ? '户外 · 正在路上' : `${s.players.find(t => t.id === p.location)?.name}的家`;
   $('players').innerHTML = s.players.map(p => `<article class="player ${p.id === playerId ? 'me' : ''} ${p.alive ? '' : 'out'}" data-player="${p.id}">
-    <div class="player-head"><span class="player-name">${escape(p.name)}${p.id === playerId ? ' · 你' : ''}</span><span class="badge">${!p.alive ? '已出局' : s.phase === 'rps' ? (p.picked ? '已出拳' : '思考中') : `${p.steps} 步可用`}</span></div>
+    <div class="player-head"><span class="player-name">${escape(p.name)}${p.id === playerId ? ' · 你' : ''}</span><span class="badge">${!p.alive ? '已出局' : s.phase === 'rps' ? (p.picked ? '已出拳' : '思考中') : `${p.steps} 步可用`}</span>${kickButton(members.find(m => m.playerId === p.id))}</div>
     <p>${escape(locationName(p))}</p><div class="equipment"><span>裤子 ${p.armor}/3</span><span class="${p.knife ? 'armed' : ''}">${p.knife ? '持刀' : '空手'}</span>${p.hand ? `<span>${HAND_NAMES[p.hand]}${p.won ? ' · 胜' : ''}</span>` : ''}</div>
     <p class="action-text" ${p.active ? `data-timer="${p.id}"` : ''}>${p.active ? ACTION_NAMES[p.active.type] : p.alive ? '等待行动' : '本局结束'}</p><div class="progress"><i data-progress="${p.id}" style="width:0%"></i></div>${p.queue.length ? `<p>排队 ${p.queue.length} 步</p>` : ''}</article>`).join('');
   options($('destination'), s.players, p => `${p.name}的家`);
@@ -130,13 +166,18 @@ function commandFor(type) {
 }
 function updateControls() {
   for (const button of document.querySelectorAll('[data-action]')) {
-    const reason = !snapshot || socket?.readyState !== WebSocket.OPEN ? '尚未连接' : predictor.reason(commandFor(button.dataset.action));
+    const reason = leaving || !snapshot || socket?.readyState !== WebSocket.OPEN ? '尚未连接' : predictor.reason(commandFor(button.dataset.action));
     button.disabled = Boolean(reason); button.title = reason || `消耗 1 步，执行 ${ACTION_SECONDS[button.dataset.action]} 秒`;
   }
 }
 function animate() {
   if (!snapshot) return;
   const time = snapshot.game.time + (performance.now() - receivedAt) / 1000;
+  if (snapshot.game.phase === 'reveal') {
+    const remaining = Math.max(0, snapshot.game.revealUntil - time);
+    $('reveal-countdown').textContent = remaining > 0 ? `${Math.ceil(remaining)} 秒后${snapshot.game.tie ? '重新出拳' : '开始行动'}` : '等待其他街坊一起进入下一阶段…';
+    $('reveal-progress').style.width = `${Math.min(100, remaining / 5 * 100)}%`;
+  }
   for (const p of snapshot.game.players) if (p.active) {
     const remaining = Math.max(0, p.active.endsAt - time);
     const label = document.querySelector(`[data-timer="${p.id}"]`);
@@ -158,11 +199,36 @@ $('invite').onclick = async () => {
   try { await navigator.clipboard.writeText(link); notice('邀请链接已复制，发给朋友即可加入。'); }
   catch { notice(`邀请链接：${link}`); }
 };
-$('leave').onclick = () => {
-  stopped = true; clearTimeout(retry); socket?.close(); snapshot = null; pending.clear();
-  $('entrance').hidden = false; $('room').hidden = true; $('resume').hidden = false;
-  notice('已断开连接，75 秒内可以恢复本局。');
+function resetRoom(message) {
+  stopped = true; clearTimeout(retry);
+  const previous = socket; socket = null; previous?.close();
+  session = null; snapshot = null; picked = null; displayedPhase = undefined; leaving = false;
+  pending.clear(); cues.reset(); sounds.stop();
+  try { sessionStorage.removeItem(storageKey); } catch { /* Optional. */ }
+  history.replaceState(null, '', location.pathname); $('room-code').value = '';
+  delete $('gggame').dataset.phase;
+  $('entrance').hidden = false; $('room').hidden = true; $('resume').hidden = true;
+  $('leave').disabled = false; $('leave').textContent = '退出房间';
+  status('尚未连接'); notice(message); window.scrollTo(0, 0);
+}
+$('leave').onclick = async () => {
+  if (!session || leaving) return;
+  leaving = true; $('leave').disabled = true; $('leave').textContent = '正在退出…'; updateControls();
+  const leavingSession = session;
+  const seq = ++session.seq; store();
+  try {
+    const response = await fetch(`${endpoint}/api/rooms/${session.code}/leave`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: session.token, seq }), signal: AbortSignal.timeout(10000) });
+    if (session !== leavingSession) return; // A removal notification may already have reset the UI.
+    if (!response.ok && ![401, 404].includes(response.status)) throw Error('退出未确认');
+    resetRoom('已退出房间，可以创建或加入新的房间。');
+  } catch {
+    if (session === leavingSession) resetRoom('本机已退出；网络中断，原房间将在断线超时后将你移出。');
+  }
 };
+$('room').addEventListener('click', event => {
+  const button = event.target.closest('[data-kick]');
+  if (button && snapshot?.host === snapshot.you) send('kick', { target: button.dataset.kick });
+});
 setInterval(animate, 100);
-setInterval(() => { if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'ping' })); }, 15000);
+setInterval(() => { if (!leaving && socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'ping' })); }, 15000);
 if (session && endpoint && (!invitedCode || invitedCode === session.code)) connect();

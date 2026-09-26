@@ -28,13 +28,13 @@ describe('authoritative multiplayer room', () => {
     send(0, { type: 'pick', hand: 'rock' });
     send(1, { type: 'pick', hand: 'scissors' });
     send(2, { type: 'pick', hand: 'scissors' });
-    room.advance(1300);
+    room.advance(5000);
     const command = { seq: 3, type: 'knife', actor: 'p1', time: 999999 };
-    const first = room.command(users[0].memberId, command, 1300);
+    const first = room.command(users[0].memberId, command, 5000);
     expect(first.ok).toBe(true);
-    expect(room.command(users[0].memberId, command, 1300)).toEqual(first);
+    expect(room.command(users[0].memberId, command, 5000)).toEqual(first);
     expect(room.game.state.players[0].steps).toBe(1);
-    expect(room.game.state.players[0].active.endsAt).toBe(2.3);
+    expect(room.game.state.players[0].active.endsAt).toBe(6);
   });
   it('restores private picks and active queues, then catches up at exact deadlines', () => {
     const { room, users, send } = setup(3);
@@ -42,12 +42,12 @@ describe('authoritative multiplayer room', () => {
     const restoredPicks = new Room(room.code, 0, room.save());
     expect(restoredPicks.game.picks.get('p0')).toBe('rock');
     send(1, { type: 'pick', hand: 'scissors' }); send(2, { type: 'pick', hand: 'scissors' });
-    room.advance(1300); send(0, { type: 'knife' }); send(0, { type: 'move', target: 'p1' });
-    const restored = new Room(room.code, 2000, room.save());
-    restored.advance(2300);
+    room.advance(5000); send(0, { type: 'knife' }); send(0, { type: 'move', target: 'p1' });
+    const restored = new Room(room.code, 5700, room.save());
+    restored.advance(6000);
     expect(restored.game.state.players[0].knife).toBe(true);
     expect(restored.game.state.players[0].location).toBeNull();
-    restored.advance(4400);
+    restored.advance(8100);
     expect(restored.game.state.players[0].location).toBe('p1');
     expect(restored.game.state.phase).toBe('between');
     expect(restored.authenticate(users[0].token).playerId).toBe('p0');

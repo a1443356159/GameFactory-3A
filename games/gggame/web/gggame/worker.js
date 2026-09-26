@@ -19,7 +19,7 @@ export default {
     if (url.pathname === '/api/rooms' && request.method === 'POST') {
       code = crypto.randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase(); route = 'create';
     } else {
-      const match = url.pathname.match(/^\/api\/rooms\/([A-F0-9]{12})\/(join|ws)$/);
+      const match = url.pathname.match(/^\/api\/rooms\/([A-F0-9]{12})\/(join|leave|ws)$/);
       if (!match) return json({ reason: '找不到房间接口。' }, 404, cors);
       [, code, route] = match;
     }
@@ -44,11 +44,21 @@ export class GameRoom extends DurableObject {
   }
   async persist() {
     if (this.room.expired) {
-      for (const ws of this.ctx.getWebSockets()) ws.close(1000, '房间已过期');
-      await this.ctx.storage.deleteAll(); this.room = null; return;
+      await this.ctx.storage.deleteAll(); this.room = null;
+      for (const ws of this.ctx.getWebSockets()) ws.close(4002, '房间已关闭');
+      return;
     }
     await this.ctx.storage.put('room', this.room.save());
     await this.ctx.storage.setAlarm(Math.max(Date.now() + 1, Math.ceil(this.room.nextEvent())));
+  }
+  notifyRemoval(reply) {
+    if (!reply.removed) return;
+    for (const ws of this.ctx.getWebSockets()) if (ws.deserializeAttachment()?.id === reply.removed.id) {
+      try {
+        ws.send(JSON.stringify({ type: 'removed', reason: reply.removed.reason }));
+        ws.close(reply.removed.reason === 'kicked' ? 4003 : 4002, '已离开房间');
+      } catch { /* Already closed after room deletion. */ }
+    }
   }
   broadcast() {
     if (!this.room) return;
@@ -59,15 +69,20 @@ export class GameRoom extends DurableObject {
   async fetch(request) {
     const [, code, route] = new URL(request.url).pathname.split('/');
     if (!codePattern.test(code)) return json({ reason: '无效房间号。' }, 400);
-    if (route === 'create' || route === 'join') {
+    if (['create', 'join', 'leave'].includes(route)) {
       if (request.method !== 'POST') return json({ reason: '需要 POST 请求。' }, 405);
       let body;
       try { const raw = await request.text(); if (raw.length > 2048) throw Error(); body = JSON.parse(raw); }
       catch { return json({ reason: '无效请求。' }, 400); }
       if (route === 'create' && !this.room) this.room = new Room(code);
       if (!this.room) return json({ reason: '房间不存在或已过期。' }, 404);
-      const reply = this.room.join(body?.name, Date.now());
-      await this.persist(); this.broadcast();
+      let reply;
+      if (route === 'leave') {
+        const member = this.room.authenticate(body?.token);
+        if (!member) return json({ reason: '身份已经失效。' }, 401);
+        reply = this.room.command(member.id, { type: 'leave', seq: body?.seq }, Date.now());
+      } else reply = this.room.join(body?.name, Date.now());
+      await this.persist(); this.notifyRemoval(reply); this.broadcast();
       return json(reply, reply.ok ? 200 : 400);
     }
     if (route !== 'ws' || request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') return json({ reason: '需要 WebSocket 连接。' }, 400);
@@ -97,7 +112,7 @@ export class GameRoom extends DurableObject {
     const reply = this.room.command(attachment.id, msg, now);
     await this.persist();
     try { ws.send(JSON.stringify({ type: 'ack', seq: msg?.seq, ...reply })); } catch { /* Disconnected during commit. */ }
-    this.broadcast();
+    this.notifyRemoval(reply); this.broadcast();
   }
   async alarm() {
     if (!this.room) return;

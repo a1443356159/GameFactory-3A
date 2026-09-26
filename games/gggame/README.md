@@ -12,22 +12,24 @@ GGgame 在本仓库开发。网页仓库 `a1443356159/homepage` 只保存构建�
 - `shared/bots.js`：只读取公开状态的电脑策略。
 - `web/gggame/room.js`：权威多人房间，绑定会话身份、命令去重、断线宽限、持久化状态恢复。
 - `web/gggame/worker.js`：Cloudflare HTTP/WebSocket 接口、Durable Objects 存储及结算 alarm。
-- `web/src/gggame/`、`web/index.html`：当前文字交互界面；Vite 负责构建。
+- `web/src/gggame/`、`web/index.html`：联机客户端、阶段界面、文字操作与 3D 装配；Vite 负责构建。
+- `web/packages/gggame-3d/`：3D 小院、程序角色、动作动画与镜头；消费同一份服务端公开状态。
 - `native/`、`manage.py`：原始 GameFactory Three.js 人机原型，规则与 AI 已改为引用 `shared/`。
 
-之后制作 3D 时，使用 GameFactory 的引擎及资产生成功能实现场景、人物和动画，继续消费权威房间状态和发送同样的操作。规则及联机计时不需要复制到 3D 界面中。
+当前 3D 小院使用 GameFactory 的运行框架和程序模型，消费权威房间状态并发送同样的操作。后续可以通过资产生成与导入流程替换人物、房屋和动画，规则及联机计时不需要复制到 3D 界面中。
 
 ## 本地联机试玩
 
-Node >= 22.12，无需 Cloudflare 账号、模型权重或 GPU。
+Node >= 22.12 和 Python 3，无需 Cloudflare 账号或模型权重。3D 在浏览器 WebGL 中渲染，不能显示时自动回到文字视图。
 
 ```sh
 cd games/gggame/web
-npm ci
+python manage.py setup
 npm run rooms:dev
 ```
 
-另一个终端执行 `npm run dev`，打开 `http://127.0.0.1:4321/projects/GGgame`。
+另一个终端执行 `python manage.py serve`，打开 `http://127.0.0.1:4321/projects/GGgame`。
+setup 通过公开 `ThreeClient` 安装本仓库的 A3GamePlayable 框架和 npm 依赖；框架副本不提交，干净 checkout 需先 setup。
 用不同浏览器或无痕窗口加入同一房间；也可添加电脑。刷新页面会从 sessionStorage 恢复原身份。
 两个开发服务分别使用 4321 和 8787 端口，Ctrl-C 停止。局域网或公网联机需要可访问的服务地址与匹配的来源白名单。
 
@@ -35,11 +37,11 @@ npm run rooms:dev
 
 ```sh
 cd games/gggame/web
-npm test
-npm run build
+python manage.py test
+python manage.py build
 npx playwright install chromium
 # 先启动上述本地网页和房间服务
-npm run test:e2e
+python manage.py browser-test
 # 使用正式域名验证真实联机
 GGGAME_WEB_URL=https://www.yuanyiyan.com GGGAME_ROOM_URL=https://gggame-api.yuanyiyan.com npm run test:e2e
 ```
@@ -70,7 +72,7 @@ npm run rooms:deploy
 
 ```sh
 cd games/gggame/web
-npm run build
+python manage.py build
 npm run export:homepage -- /path/to/homepage
 ```
 
@@ -81,6 +83,9 @@ npm run export:homepage -- /path/to/homepage
 
 ## 界面与对局反馈
 
+- 默认显示俯视 3D 小院。点房屋或地板前往，点小人选对手，右侧/下方安排动作；拖动旋转，镜头按钮缩放、找自己和全景。文字视图开关会保留。
+- 五种动作与服务器计时同步；移动立即显示在独立户外，途中刷新通过公开 `active.from` 恢复轨迹。人物倒地、护甲和持刀都只在服务端结算后改变。
+- 当前人物、房屋、植被为程序制作的可玩原型资产，未调用付费生成服务。细化范围及验收见 [3D-DESIGN.md](3D-DESIGN.md)。
 - 出拳阶段独立占满视口；收齐出拳后切到结果页，服务端统一展示 5 秒，列出所有人的步数。
 - 赢、输、平局以及五种行动结算都有短音效；右上角可静音，设置会保留。首次点击后启用声音，刷新重连不会补播历史音效。
 - 所有阶段都有“退出房间”：立即撤销身份，对局中视为出局并取消动作；意外断线仍保留重连宽限。

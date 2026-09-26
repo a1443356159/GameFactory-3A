@@ -11,7 +11,7 @@
   <body>
     <main id="gggame" data-endpoint="__GGGAME_ENDPOINT__">
       <header class="topbar"><a href="/">← Yuanyi's playground</a><div class="top-actions"><button id="sound-toggle" aria-pressed="true">音效：开</button><span id="connection">尚未连接</span></div></header>
-      <section class="hero"><div><p class="eyebrow">猜拳 · 串门 · 活到最后</p><h1>GG<span>game</span><i>ONLINE</i></h1><p>一场从猜拳开始的邻里大乱斗。</p></div><div class="hero-art" aria-hidden="true"><span>石</span><span>剪</span><span>布</span></div></section>
+      <section class="hero"><div><p class="eyebrow">猜拳 · 串门 · 活到最后</p><h1>GG<span>game</span><i>3D ONLINE</i></h1><p>小院不大，街坊的心眼可不少。</p></div><div class="hero-art" aria-hidden="true"><span>石</span><span>剪</span><span>布</span></div></section>
       <p id="notice" role="status" aria-live="polite"></p>
       <section id="entrance" class="panel entrance">
         <div><p class="eyebrow">WELCOME HOME</p><h2>朋友到齐，就开局。</h2><p class="muted">创建房间，把邀请链接发给朋友。每个人用自己的手机或电脑加入。</p></div>
@@ -23,6 +23,15 @@
       </section>
       <section id="room" hidden>
         <div class="room-strip"><div><span class="eyebrow">ROOM</span> <strong id="room-label"></strong></div><div class="buttons"><button id="invite">复制邀请链接</button><button id="leave" class="danger" title="对局中退出会立即出局">退出房间</button></div></div>
+        <section id="world-shell" class="world-shell" aria-label="3D 小院">
+          <div class="world-heading"><div><span class="eyebrow">THE NEIGHBORHOOD</span><h2>今日小院，热闹开场。</h2></div><button id="world-toggle" aria-pressed="true">切换文字视图</button></div>
+          <div id="world-stage" class="world-stage">
+            <div id="world-canvas"></div><div id="world-labels"></div><div id="world-loading" role="status">正在搭建小院…</div>
+            <div class="world-caption"><span>拖动旋转 · 点房屋前往 · 点小人选对手</span></div>
+            <div class="camera-tools" aria-label="镜头控制"><button id="world-zoom-in" aria-label="放大小院">＋</button><button id="world-zoom-out" aria-label="缩小小院">−</button><button id="world-rotate" aria-label="旋转小院">↻</button><button id="world-self">找自己</button><button id="world-fit">全景</button></div>
+          </div>
+          <p id="world-hint" class="fine">每个人的家都是独立地点。路上可以擦肩而过，但不能交手。</p>
+        </section>
         <div id="lobby" class="panel"><h2>等朋友来串门</h2><p class="muted">至少 2 人，也可以添加电脑先试一局。</p><div id="members" class="member-list"></div><div class="buttons"><button id="start" class="primary">开始游戏</button><button id="add-bot">添加电脑</button></div><p id="host-hint" class="muted"></p></div>
         <section id="rps-stage" class="focus-stage" hidden aria-labelledby="rps-title">
           <p class="eyebrow" id="rps-round"></p><p class="stage-label">一起出拳</p>
@@ -48,7 +57,7 @@
         </div>
       </section>
       <details class="rules"><summary>第一次玩？看看规则 ↗</summary><div><p>所有人从自己家开始，穿 1 条裤子，最多穿 3 条。裤子是护甲，没有裤子也不会自动出局。</p><p>一起石头剪刀布；平局全员重来。可以有多个赢家，每位赢家获得「输家人数」的步数。连续输 7 次会获得 3 步保底并重新累计；平局不计入也不中断连败，获胜清零。结果展示 5 秒后开始行动。所有人的步数和行动用完后进入下一轮，步数不能保留。</p><p>拿刀 1 秒、穿裤子 1 秒、移动 2 秒、脱裤子 3 秒、割 3 秒，各花 1 步。刀永久持有；同地点才能脱或割。割需要持刀且对手没有裤子。</p><p>各人同时行动，自身动作依次执行。移动一开始就进入独立的户外，2 秒后到达。其他动作执行期间仍可能被偷袭。</p><p>动作结束时结算；同刻优先级：拿刀 → 移动 → 穿 → 脱 → 割。割结算时对方穿上了裤子，则无效且照常消耗步数。最后存活的人获胜。</p><p>房主只能在大厅踢人。主动退出会立即离开房间，对局中视为出局。意外断线 75 秒内可以重连；超时退出本局。服务器按收到操作的时间处理，同类同刻动作按提交顺序结算。试玩服务每房间最多 64 人。</p></div></details>
-      <footer>GGgame · 低配规则，多人快乐。<span>文字联机试玩版</span></footer>
+      <footer>GGgame · 低配规则，多人快乐。<span>3D 小院试玩版</span></footer>
       <noscript>请开启 JavaScript 以连接游戏房间。</noscript>
     </main>
     <script type="module" src="/src/gggame/client.js"></script>

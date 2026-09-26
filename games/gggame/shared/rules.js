@@ -132,7 +132,7 @@ export class GGGame {
   startNext(p) {
     if (!p.alive || p.active || !p.queue.length) return;
     const job = p.queue.shift();
-    p.active = { ...job, startedAt: this.state.time, endsAt: this.state.time + ACTION_SECONDS[job.type] };
+    p.active = { ...job, from: p.location, startedAt: this.state.time, endsAt: this.state.time + ACTION_SECONDS[job.type] };
     if (job.type === 'move') p.location = null; // Outdoor travel is unique to each player, never a shared place.
     this.log(`${p.name}开始${ACTION_NAMES[job.type]}（${ACTION_SECONDS[job.type]} 秒）。`, job.type === 'move' ? 'move' : 'info');
     this.emit('action_started', { actor: p.id, action: job.type, target: job.target });

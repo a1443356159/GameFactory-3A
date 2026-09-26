@@ -1,0 +1,25 @@
+{
+  "name": "gggame-web",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 4321",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4321",
+    "rooms:dev": "wrangler dev --env local --port 8787",
+    "rooms:deploy": "wrangler deploy --env=\"\"",
+    "test": "vitest run gggame/tests",
+    "test:e2e": "playwright test --config gggame/playwright.config.js",
+    "export:homepage": "node scripts/export-homepage.mjs"
+  },
+  "devDependencies": {
+    "vite": "^6.4.3",
+    "wrangler": "^4.141.0",
+    "vitest": "^5.0.2",
+    "@playwright/test": "^1.63.0"
+  }
+}

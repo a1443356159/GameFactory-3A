@@ -1,0 +1,5 @@
+{
+  "name": "@gggame/gameplay", "version": "0.1.0", "private": true,
+  "type": "module", "exports": "./src/rules.js",
+  "a3game": {"kind": "gameplay_package", "engine": "three_js", "api_version": "v1"}
+}

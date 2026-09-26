@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.wrangler/
+.gggame-test-results/
+playwright-report/
+.env*
+!.env.example

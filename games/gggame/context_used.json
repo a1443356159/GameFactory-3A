@@ -1,0 +1,25 @@
+{
+  "schema_version": "gamefactory3a.context_used.v1",
+  "engine": "three_js",
+  "skills": [
+    "agent_skills/setting_overview.md",
+    "agent_skills/game_design/SKILL.md",
+    "agent_skills/game_design/narrative_design.md",
+    "agent_skills/game_design/decomposition.md",
+    "agent_skills/game_design/interaction_design.md",
+    "agent_skills/game_design/task_tracking.md",
+    "agent_skills/code_gen/mechanic/game_generation.md",
+    "agent_skills/code_gen/ui/game_ui_generation.md"
+  ],
+  "engine_api": "agent_skills/engine_context/three_js_api.md",
+  "examples_used": [{
+    "path":"engine_adapters/three_js/examples/rts-example/src/index.js",
+    "role":"mechanic_example", "purpose":["runtime boot and module structure"]
+  },{
+    "path":"engine_adapters/three_js/examples/rts-example/package.json",
+    "role":"mechanic_example", "purpose":["gameplay package metadata"]
+  }],
+  "layout_reference":"agent_skills/game_design/game_layout_templates/rts.json",
+  "framework_apis":["ThreeClient","bootA3GameRuntime","A3GameHudLayer.addPanel","A3GameRuntimeHost.onTick","A3GameRuntimeHost.onRender","createSeededRandom"],
+  "delivery":"native three_js browser runtime; standalone Browser Serving not part of this prototype"
+}

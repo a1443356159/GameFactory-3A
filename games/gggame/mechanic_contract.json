@@ -1,0 +1,107 @@
+{
+  "schema_version": "gamefactory3a.mechanic_contract.v1",
+  "contract_version": 2,
+  "gameplay_module": "@gggame/gameplay",
+  "public_api_paths": [
+    "native/packages/gggame/src/rules.js"
+  ],
+  "state": [
+    {
+      "name": "phase",
+      "type": "lobby | rps | reveal | action | between | over"
+    },
+    {
+      "name": "players",
+      "type": "array",
+      "fields": [
+        "id",
+        "name",
+        "home",
+        "location",
+        "armor",
+        "knife",
+        "alive",
+        "steps",
+        "hand",
+        "picked",
+        "won",
+        "active",
+        "queue"
+      ]
+    },
+    {
+      "name": "time",
+      "type": "number",
+      "units": "simulation seconds"
+    },
+    {
+      "name": "round",
+      "type": "integer"
+    },
+    {
+      "name": "attempt",
+      "type": "integer"
+    },
+    {
+      "name": "paused",
+      "type": "boolean"
+    },
+    {
+      "name": "result",
+      "type": "player id | null"
+    },
+    {
+      "name": "logs",
+      "type": "array"
+    },
+    {
+      "name": "revision",
+      "type": "integer"
+    }
+  ],
+  "events": [
+    "started",
+    "picked",
+    "revealed",
+    "round_started",
+    "action_phase",
+    "queued",
+    "action_started",
+    "action_completed",
+    "round_completed",
+    "game_over",
+    "paused"
+  ],
+  "commands": [
+    "pick",
+    "move",
+    "wear",
+    "knife",
+    "strip",
+    "execute",
+    "pause"
+  ],
+  "adapter": {
+    "getState()": "isolated serializable snapshot; hidden picks are excluded",
+    "subscribe(listener)": "subscribe to changes; returns unsubscribe function",
+    "invoke({type,actor,target,hand})": "validated command; returns {ok,reason?}",
+    "reason({type,actor,target})": "read-only action availability reason, empty when legal",
+    "start(names)": "new match with all inventories and state reset",
+    "update(dt)": "advance simulation, called by runtime fixed tick"
+  },
+  "action_seconds": {
+    "knife": 1,
+    "move": 2,
+    "wear": 1,
+    "strip": 3,
+    "execute": 3
+  },
+  "simultaneous_completion_priority": [
+    "knife",
+    "move",
+    "wear",
+    "strip",
+    "execute"
+  ],
+  "outdoor_location": null
+}

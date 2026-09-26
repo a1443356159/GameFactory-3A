@@ -1,0 +1,34 @@
+{
+  "generation_status": "generated",
+  "assembly_status": "assembled",
+  "verification_status": "verified_local_prototype",
+  "rules_contract_version": 2,
+  "unit_tests": {
+    "passed": 20,
+    "failed": 0
+  },
+  "browser_tests": {
+    "passed": 2,
+    "failed": 0
+  },
+  "recording": {
+    "path": ".tmp/recording/gameplay-2026-09-26T09-02-54-902Z-Lq5RK5/report.json",
+    "frames": 80,
+    "seconds": 8,
+    "fps": 10,
+    "page_errors": [],
+    "source_hash": "aac72a2025b242dcc7597069451b587131267c5ea87e7a693fb64abe0eb5921f"
+  },
+  "full_game": {
+    "rounds": 8,
+    "result": "p0",
+    "human_actions": [
+      "wear",
+      "knife",
+      "move",
+      "strip",
+      "execute"
+    ]
+  },
+  "scope": "Local Chromium browser prototype, not multiplayer or framework benchmark"
+}

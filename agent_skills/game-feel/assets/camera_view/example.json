@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "coordinate_system": "Y_UP_RIGHT_HANDED",
+  "projection": {
+    "type": "perspective",
+    "fov_y_deg": 40,
+    "near": 0.1,
+    "far": 200
+  },
+  "pose": {
+    "target": [
+      0,
+      1,
+      0
+    ],
+    "azimuth_deg": 45,
+    "elevation_deg": 30,
+    "distance": 20
+  },
+  "framing": {
+    "required_targets": [
+      "actor"
+    ],
+    "safe_margin": 0.05
+  }
+}

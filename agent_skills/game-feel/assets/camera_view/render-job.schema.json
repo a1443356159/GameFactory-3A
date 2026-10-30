@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Code Video Render Job 1.0",
+  "type": "object", "additionalProperties": false,
+  "required": ["sample_id", "scene_entry", "three_entry", "camera_view", "render", "output_dir"],
+  "properties": {
+    "sample_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"},
+    "scene_entry": {"type": "string", "minLength": 1},
+    "three_entry": {"type": "string", "minLength": 1},
+    "camera_view": {"type": "string", "minLength": 1},
+    "output_dir": {"type": "string", "minLength": 1},
+    "render": {
+      "type": "object", "additionalProperties": false,
+      "required": ["width", "height", "fps", "duration_sec"],
+      "properties": {
+        "width": {"type": "integer", "minimum": 64, "maximum": 1920, "multipleOf": 2},
+        "height": {"type": "integer", "minimum": 64, "maximum": 1080, "multipleOf": 2},
+        "fps": {"type": "integer", "minimum": 1, "maximum": 120},
+        "duration_sec": {"type": "number", "exclusiveMinimum": 0, "maximum": 60}
+      }
+    }
+  }
+}
